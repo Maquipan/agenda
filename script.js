@@ -1,267 +1,326 @@
-// --- Configuración de Firebase ---
-const firebaseConfig = {
-    apiKey: "AIzaSyDuUI-G3Y0sEM3Mf4_1uNFe-19mM1TPyxM",
-    authDomain: "agenda-49c73.firebaseapp.com",
-    projectId: "agenda-49c73",
-    storageBucket: "agenda-49c73.appspot.com",
-    messagingSenderId: "946710304963",
-    appId: "1:946710304963:web:7e5cea38f60e4586116a76",
-    measurementId: "G-PPEMD1SLNF"
-};
-
-// --- Inicialización de Firebase ---
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
-
-// --- Referencias al DOM (Auth) ---
-const authContainer = document.getElementById('auth-container');
-const loginForm = document.getElementById('login-form');
-const registerForm = document.getElementById('register-form');
-const authError = document.getElementById('auth-error');
-
-// --- Referencias al DOM (Agenda) ---
-const agendaContainer = document.getElementById('agenda-container');
-const taskInput = document.getElementById('task-input');
-const urgencyLevel = document.getElementById('urgency-level');
-const dueDateInput = document.getElementById('due-date');
-const addTaskBtn = document.getElementById('add-task-btn');
-const taskList = document.getElementById('task-list');
-const userEmailSpan = document.getElementById('user-email');
-const logoutBtn = document.getElementById('logout-btn');
-
-// --- Referencias al DOM del Modal ---
-const notificationModal = document.getElementById('notification-modal');
-const modalMessage = document.getElementById('modal-message');
-const closeBtn = document.querySelector('.close-btn');
-
-// --- Lógica de Autenticación ---
-auth.onAuthStateChanged(user => {
-    if (user) {
-        authContainer.style.display = 'none';
-        agendaContainer.style.display = 'block';
-        userEmailSpan.textContent = user.email;
-        loadTasks(user.uid);
-    } else {
-        authContainer.style.display = 'block';
-        agendaContainer.style.display = 'none';
-        taskList.innerHTML = '';
-        if (unsubscribeTasks) {
-            unsubscribeTasks();
-        }
-    }
-});
-
-registerForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const email = document.getElementById('register-email').value;
-    const password = document.getElementById('register-password').value;
-    authError.textContent = '';
-    auth.createUserWithEmailAndPassword(email, password)
-        .catch(error => {
-            authError.textContent = `Error: ${error.message}`;
-        });
-});
-
-loginForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-    authError.textContent = '';
-    auth.signInWithEmailAndPassword(email, password)
-        .catch(error => {
-            authError.textContent = 'Correo o contraseña incorrectos.';
-        });
-});
-
-logoutBtn.addEventListener('click', () => {
-    auth.signOut();
-});
-
-// --- Funciones para controlar el Modal ---
-function showNotificationModal(message) {
-    modalMessage.textContent = message;
-    notificationModal.style.display = 'flex';
+/* Estilos generales */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 2em;
+    margin: 0;
 }
 
-function hideNotificationModal() {
-    notificationModal.style.display = 'none';
+/* Contenedor de Autenticación */
+.auth-container {
+    background: white;
+    padding: 2.5em;
+    border-radius: 15px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    width: 400px;
+    text-align: center;
 }
 
-// Event listeners para cerrar el modal
-closeBtn.addEventListener('click', hideNotificationModal);
-window.addEventListener('click', (event) => {
-    if (event.target == notificationModal) {
-        hideNotificationModal();
-    }
-});
-
-// --- Lógica de la Agenda ---
-let unsubscribeTasks;
-const countdownIntervals = {};
-const notifiedTasks = {};
-
-function loadTasks(userId) {
-    if (unsubscribeTasks) unsubscribeTasks();
-
-    unsubscribeTasks = db.collection('tasks')
-        .where('userId', '==', userId)
-        .orderBy('createdAt', 'desc')
-        .onSnapshot(snapshot => {
-            taskList.innerHTML = '';
-            Object.values(countdownIntervals).forEach(clearInterval);
-            snapshot.forEach(doc => renderTask(doc));
-        }, error => {
-            console.error("Error al cargar tareas:", error);
-        });
+.auth-container h2 {
+    margin-bottom: 1em;
+    color: #333;
 }
 
-addTaskBtn.addEventListener('click', () => {
-    const taskText = taskInput.value.trim();
-    if (taskText === "" || !auth.currentUser) return;
-
-    const taskData = {
-        text: taskText,
-        urgency: urgencyLevel.value,
-        dueDate: dueDateInput.value || null,
-        completed: false,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        userId: auth.currentUser.uid
-    };
-
-    db.collection('tasks').add(taskData).then(() => {
-        taskInput.value = "";
-        dueDateInput.value = "";
-        urgencyLevel.value = "media";
-    }).catch(error => console.error("Error al agregar tarea:", error));
-});
-
-function renderTask(doc) {
-    const task = doc.data();
-    const taskId = doc.id;
-
-    if (!notifiedTasks[taskId]) {
-        notifiedTasks[taskId] = {
-            notified1Hour: false,
-            notified15Min: false,
-            notifiedTimeUp: false
-        };
-    }
-
-    const listItem = document.createElement('li');
-    listItem.id = taskId;
-    listItem.className = `task-item urgency-${task.urgency}`;
-    if (task.completed) {
-        listItem.classList.add('completed')
-    }
-
-    const mainContent = document.createElement('div');
-    mainContent.className = 'task-item__main';
-
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = task.completed;
-    checkbox.addEventListener('change', () => {
-        db.collection('tasks').doc(taskId).update({
-            completed: checkbox.checked
-        })
-    });
-
-    const taskSpan = document.createElement('span');
-    taskSpan.className = 'task-item__text';
-    taskSpan.textContent = task.text;
-
-    const urgencyTag = document.createElement('span');
-    urgencyTag.className = `urgency-tag tag-${task.urgency}`;
-    urgencyTag.textContent = task.urgency.charAt(0).toUpperCase() + task.urgency.slice(1);
-
-    const deleteButton = document.createElement('button');
-    deleteButton.className = 'delete-btn';
-    deleteButton.innerHTML = '<i class="fas fa-trash"></i>';
-    deleteButton.addEventListener('click', () => {
-        if (confirm("¿Estás seguro de que quieres eliminar esta tarea?")) {
-            delete notifiedTasks[taskId];
-            clearInterval(countdownIntervals[taskId]);
-            db.collection('tasks').doc(taskId).delete()
-        }
-    });
-
-    mainContent.append(checkbox, taskSpan, urgencyTag, deleteButton);
-    listItem.appendChild(mainContent);
-
-    if (task.dueDate) {
-        const detailsContainer = document.createElement('div');
-        detailsContainer.className = 'task-item__details';
-
-        const creationDateSpan = document.createElement('span');
-        if (task.createdAt) {
-            creationDateSpan.textContent = `Creado: ${task.createdAt.toDate().toLocaleDateString()}`
-        }
-
-        const countdownElement = document.createElement('div');
-        countdownElement.className = 'countdown-timer';
-
-        detailsContainer.append(creationDateSpan, countdownElement);
-        listItem.appendChild(detailsContainer);
-
-        if (!task.completed) {
-            startCountdown(taskId, new Date(task.dueDate).getTime(), countdownElement, task.text)
-        } else {
-            countdownElement.textContent = "Completada";
-        }
-    }
-
-    taskList.appendChild(listItem);
+.auth-container input {
+    width: 100%;
+    padding: 0.8em;
+    margin-bottom: 1em;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-sizing: border-box;
 }
 
-function startCountdown(taskId, dueDate, element, taskText) {
-    if (countdownIntervals[taskId]) clearInterval(countdownIntervals[taskId]);
-
-    const ONE_HOUR = 60 * 60 * 1000;
-    const FIFTEEN_MINUTES = 15 * 60 * 1000;
-
-    const intervalId = setInterval(() => {
-        const now = new Date().getTime();
-        const distance = dueDate - now;
-
-        if (distance < ONE_HOUR && !notifiedTasks[taskId].notified1Hour) {
-            showNotificationModal(`¡Queda menos de 1 hora para la tarea: "${taskText}"!`);
-            notifiedTasks[taskId].notified1Hour = true;
-        }
-
-        if (distance < FIFTEEN_MINUTES && !notifiedTasks[taskId].notified15Min) {
-            showNotificationModal(`¡URGENTE! Quedan menos de 15 minutos para la tarea: "${taskText}"`);
-            notifiedTasks[taskId].notified15Min = true;
-        }
-
-        if (distance < 0) {
-            if (!notifiedTasks[taskId].notifiedTimeUp) {
-                showNotificationModal(`Se ha cumplido el tiempo para la tarea: "${taskText}"`);
-                notifiedTasks[taskId].notifiedTimeUp = true;
-            }
-            element.textContent = "¡Tiempo finalizado!";
-            clearInterval(intervalId);
-            return;
-        }
-
-        const d = Math.floor(distance / (1000 * 60 * 60 * 24));
-        const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-        const s = Math.floor((distance % (1000 * 60)) / 1000);
-        element.textContent = `${d}d ${h}h ${m}m ${s}s`;
-    }, 1000);
-
-    countdownIntervals[taskId] = intervalId;
+.auth-container button {
+    width: 100%;
+    padding: 0.9em;
+    border: none;
+    background-color: #5d9cec;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1em;
+    font-weight: bold;
 }
 
-// --- Helpers para cambiar entre forms de auth ---
-document.getElementById('show-register').addEventListener('click', (e) => {
-    e.preventDefault();
-    loginForm.style.display = 'none';
-    registerForm.style.display = 'block';
-});
-document.getElementById('show-login').addEventListener('click', (e) => {
-    e.preventDefault();
-    registerForm.style.display = 'none';
-    loginForm.style.display = 'block';
-});
+.auth-container p {
+    margin-top: 1.5em;
+    font-size: 0.9em;
+}
+
+.auth-container a {
+    color: #5d9cec;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.error-message {
+    color: #e74c3c;
+    margin-top: 1em;
+    font-size: 0.9em;
+    min-height: 1.2em;
+}
+
+/* Contenedor de la Agenda */
+.container {
+    background: white;
+    padding: 2.5em;
+    border-radius: 15px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    width: 600px;
+}
+
+.user-info {
+    text-align: right;
+    margin-bottom: 1.5em; /* Aumenta el margen para separar del formulario */
+    font-size: 0.9em;
+    color: #555;
+}
+
+#user-email {
+    margin-right: 1em;
+}
+
+#logout-btn {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 0.5em 1em;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+/* --- MODIFICACIÓN AQUÍ --- */
+.header {
+    text-align: center;
+    margin-bottom: 1.5em;
+    color: #4a69bd;
+}
+
+.logo-centered {
+    display: block;
+    max-height: 150px; /* Ajusta este valor según tu logo */
+    margin: 0 auto 10px; /* Centra el logo y le da espacio abajo */
+}
+/* --- FIN DE LA MODIFICACIÓN --- */
+
+h1 {
+    margin: 0;
+    font-size: 2.2em;
+}
+
+.task-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+    margin-bottom: 2em;
+}
+
+.form-row {
+    display: flex;
+    gap: 1em;
+    align-items: center;
+}
+
+.form-group {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    gap: .5em;
+}
+
+.icon {
+    color: #95a5a6;
+}
+
+#task-input,
+#urgency-level,
+#due-date {
+    width: 100%;
+    padding: .8em;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 1em;
+}
+
+#add-task-btn {
+    padding: .9em;
+    border: none;
+    background-color: #5d9cec;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1em;
+    font-weight: 700;
+    transition: background-color .3s ease;
+}
+
+#add-task-btn:hover {
+    background-color: #4a89dc;
+}
+
+#task-list {
+    list-style: none;
+    padding: 0;
+}
+
+.task-item {
+    display: flex;
+    flex-direction: column;
+    padding: 1em;
+    margin-bottom: 1em;
+    border-radius: 10px;
+    border-left: 5px solid;
+    background-color: #fdfdfd;
+    box-shadow: 0 2px 5px #0000000d;
+    transition: all .3s ease;
+    animation: fadeIn .4s ease-out forwards;
+}
+
+.task-item__main {
+    display: flex;
+    align-items: center;
+}
+
+.task-item input[type=checkbox] {
+    margin-right: 1.2em;
+    min-width: 1.3em;
+    min-height: 1.3em;
+    cursor: pointer;
+}
+
+.task-item.completed {
+    background-color: #f1f2f6;
+    border-left-color: #bdc3c7 !important;
+}
+
+.task-item.completed .task-item__text,
+.task-item.completed .urgency-tag {
+    text-decoration: line-through;
+    color: #95a5a6;
+}
+
+.task-item__text {
+    flex-grow: 1;
+    font-size: 1.1em;
+}
+
+.urgency-tag {
+    padding: .3em .7em;
+    border-radius: 12px;
+    font-size: .8em;
+    font-weight: 700;
+    color: white;
+    margin-right: 1em;
+}
+
+.task-item.urgency-baja {
+    border-left-color: #2ecc71;
+}
+
+.tag-baja {
+    background-color: #2ecc71;
+}
+
+.task-item.urgency-media {
+    border-left-color: #f39c12;
+}
+
+.tag-media {
+    background-color: #f39c12;
+}
+
+.task-item.urgency-alta {
+    border-left-color: #e74c3c;
+}
+
+.tag-alta {
+    background-color: #e74c3c;
+}
+
+.delete-btn {
+    background: 0 0;
+    border: none;
+    color: #e74c3c;
+    cursor: pointer;
+    font-size: 1.3em;
+    margin-left: 1em;
+    opacity: .7;
+    transition: opacity .3s ease;
+}
+
+.delete-btn:hover {
+    opacity: 1;
+}
+
+.task-item__details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: .8em;
+    padding-left: 2.5em;
+    font-size: .9em;
+    color: #7f8c8d;
+}
+
+.countdown-timer {
+    font-weight: 700;
+}
+
+@keyframes fadeIn {
+    0% {
+        opacity: 0;
+        transform: translateY(-15px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Estilos del Modal de Notificación */
+.modal-overlay {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background-color: #fff;
+    padding: 2em;
+    border-radius: 12px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+    text-align: center;
+    width: 90%;
+    max-width: 450px;
+    position: relative;
+    animation: slide-in 0.4s ease-out;
+}
+
+.modal-content h2 {
+    color: #e74c3c;
+    margin-top: 0;
+}
+
+.modal-content p {
+    font-size: 1.1em;
+    color: #333;
+}
+
+.close-btn {
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    color: #aaa;
+    font-s
