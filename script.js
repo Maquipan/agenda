@@ -30,18 +30,19 @@ const taskList = document.getElementById('task-list');
 const userEmailSpan = document.getElementById('user-email');
 const logoutBtn = document.getElementById('logout-btn');
 
-// --- Lógica de Autenticación ---
+// --- Referencias al DOM del Modal ---
+const notificationModal = document.getElementById('notification-modal');
+const modalMessage = document.getElementById('modal-message');
+const closeBtn = document.querySelector('.close-btn');
 
-// Listener para el estado de autenticación
+// --- Lógica de Autenticación ---
 auth.onAuthStateChanged(user => {
     if (user) {
-        // Usuario está logueado
         authContainer.style.display = 'none';
         agendaContainer.style.display = 'block';
         userEmailSpan.textContent = user.email;
         loadTasks(user.uid);
     } else {
-        // Usuario no está logueado
         authContainer.style.display = 'block';
         agendaContainer.style.display = 'none';
         taskList.innerHTML = '';
@@ -51,40 +52,54 @@ auth.onAuthStateChanged(user => {
     }
 });
 
-// Registro de nuevo usuario
 registerForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const email = document.getElementById('register-email').value;
     const password = document.getElementById('register-password').value;
     authError.textContent = '';
-
     auth.createUserWithEmailAndPassword(email, password)
         .catch(error => {
             authError.textContent = `Error: ${error.message}`;
         });
 });
 
-// Inicio de sesión
 loginForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
     authError.textContent = '';
-
     auth.signInWithEmailAndPassword(email, password)
         .catch(error => {
             authError.textContent = 'Correo o contraseña incorrectos.';
         });
 });
 
-// Cerrar sesión
 logoutBtn.addEventListener('click', () => {
     auth.signOut();
 });
 
+// --- Funciones para controlar el Modal ---
+function showNotificationModal(message) {
+    modalMessage.textContent = message;
+    notificationModal.style.display = 'flex';
+}
+
+function hideNotificationModal() {
+    notificationModal.style.display = 'none';
+}
+
+// Event listeners para cerrar el modal
+closeBtn.addEventListener('click', hideNotificationModal);
+window.addEventListener('click', (event) => {
+    if (event.target == notificationModal) {
+        hideNotificationModal();
+    }
+});
+
 // --- Lógica de la Agenda ---
-let unsubscribeTasks; // Para detener el listener
+let unsubscribeTasks;
 const countdownIntervals = {};
+const notifiedTasks = {};
 
 function loadTasks(userId) {
     if (unsubscribeTasks) unsubscribeTasks();
@@ -121,10 +136,17 @@ addTaskBtn.addEventListener('click', () => {
     }).catch(error => console.error("Error al agregar tarea:", error));
 });
 
-
 function renderTask(doc) {
     const task = doc.data();
     const taskId = doc.id;
+
+    if (!notifiedTasks[taskId]) {
+        notifiedTasks[taskId] = {
+            notified1Hour: false,
+            notified15Min: false,
+            notifiedTimeUp: false
+        };
+    }
 
     const listItem = document.createElement('li');
     listItem.id = taskId;
@@ -158,6 +180,8 @@ function renderTask(doc) {
     deleteButton.innerHTML = '<i class="fas fa-trash"></i>';
     deleteButton.addEventListener('click', () => {
         if (confirm("¿Estás seguro de que quieres eliminar esta tarea?")) {
+            delete notifiedTasks[taskId];
+            clearInterval(countdownIntervals[taskId]);
             db.collection('tasks').doc(taskId).delete()
         }
     });
@@ -181,7 +205,7 @@ function renderTask(doc) {
         listItem.appendChild(detailsContainer);
 
         if (!task.completed) {
-            startCountdown(taskId, new Date(task.dueDate).getTime(), countdownElement)
+            startCountdown(taskId, new Date(task.dueDate).getTime(), countdownElement, task.text)
         } else {
             countdownElement.textContent = "Completada";
         }
@@ -190,19 +214,36 @@ function renderTask(doc) {
     taskList.appendChild(listItem);
 }
 
-
-function startCountdown(taskId, dueDate, element) {
+function startCountdown(taskId, dueDate, element, taskText) {
     if (countdownIntervals[taskId]) clearInterval(countdownIntervals[taskId]);
+
+    const ONE_HOUR = 60 * 60 * 1000;
+    const FIFTEEN_MINUTES = 15 * 60 * 1000;
 
     const intervalId = setInterval(() => {
         const now = new Date().getTime();
         const distance = dueDate - now;
 
+        if (distance < ONE_HOUR && !notifiedTasks[taskId].notified1Hour) {
+            showNotificationModal(`¡Queda menos de 1 hora para la tarea: "${taskText}"!`);
+            notifiedTasks[taskId].notified1Hour = true;
+        }
+
+        if (distance < FIFTEEN_MINUTES && !notifiedTasks[taskId].notified15Min) {
+            showNotificationModal(`¡URGENTE! Quedan menos de 15 minutos para la tarea: "${taskText}"`);
+            notifiedTasks[taskId].notified15Min = true;
+        }
+
         if (distance < 0) {
-            clearInterval(intervalId);
+            if (!notifiedTasks[taskId].notifiedTimeUp) {
+                showNotificationModal(`Se ha cumplido el tiempo para la tarea: "${taskText}"`);
+                notifiedTasks[taskId].notifiedTimeUp = true;
+            }
             element.textContent = "¡Tiempo finalizado!";
+            clearInterval(intervalId);
             return;
         }
+
         const d = Math.floor(distance / (1000 * 60 * 60 * 24));
         const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
