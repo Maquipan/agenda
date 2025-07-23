@@ -102,7 +102,7 @@ body {
 
 .logo-centered {
     display: block;
-    max-height: 150px; /* Ajusta este valor según tu logo */
+    max-height: 50px; /* Ajusta este valor según tu logo */
     margin: 0 auto 10px; /* Centra el logo y le da espacio abajo */
 }
 /* --- FIN DE LA MODIFICACIÓN --- */
