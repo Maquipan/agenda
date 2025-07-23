@@ -75,7 +75,7 @@ body {
 
 .user-info {
     text-align: right;
-    margin-bottom: 1em;
+    margin-bottom: 1.5em; /* Aumenta el margen para separar del formulario */
     font-size: 0.9em;
     color: #555;
 }
@@ -93,11 +93,19 @@ body {
     cursor: pointer;
 }
 
+/* --- MODIFICACIÓN AQUÍ --- */
 .header {
     text-align: center;
-    margin-bottom: 2em;
+    margin-bottom: 1.5em;
     color: #4a69bd;
 }
+
+.logo-centered {
+    display: block;
+    max-height: 150px; /* Ajusta este valor según tu logo */
+    margin: 0 auto 10px; /* Centra el logo y le da espacio abajo */
+}
+/* --- FIN DE LA MODIFICACIÓN --- */
 
 h1 {
     margin: 0;
@@ -315,23 +323,4 @@ h1 {
     top: 10px;
     right: 20px;
     color: #aaa;
-    font-size: 28px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: color 0.2s;
-}
-
-.close-btn:hover {
-    color: #333;
-}
-
-@keyframes slide-in {
-    from {
-        transform: translateY(-50px);
-        opacity: 0;
-    }
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
-}
+    font-s
